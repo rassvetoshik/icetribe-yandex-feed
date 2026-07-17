@@ -1,0 +1,9 @@
+{
+  "name": "icetribe-yandex-feed",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node scripts/build-feed.mjs",
+    "test": "node --test"
+  }
+}
