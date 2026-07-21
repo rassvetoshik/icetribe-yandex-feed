@@ -1,10 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { buildFeed } from "../scripts/build-feed.mjs";
+import { COLLECTION_RULES, buildCatalogPagesFeed, buildFeed } from "../scripts/build-feed.mjs";
 
 const expectedTitles = new Map([
-  ["295827740382", "Инфракрасная сауна с ПЭМП для энергии, похудения и хорошего сна — чёрная, M (рост до 180 см)"],
   ["814872761312", "Инфракрасная сауна с ПЭМП для энергии, похудения и хорошего сна — фиолетовая, M (рост до 180 см)"],
   ["298280027412", "Инфракрасная сауна с ПЭМП для энергии, похудения и хорошего сна — чёрная, XL (рост до 205 см)"],
   ["677485475162", "Инфракрасная сауна с ПЭМП для энергии, похудения и хорошего сна — фиолетовая, XL (рост до 205 см)"],
@@ -17,7 +16,6 @@ const expectedTitles = new Map([
   ["134090264742", "Офис ПЭМП-мат для восстановления и снижения стресса"],
   ["961362605513", "ПЭМП-пояс для восстановления и снижения стресса"],
   ["821685486332", "Терапия красным светом — панель Супер Редлайт 420 Вт"],
-  ["288118574782", "Терапия красным светом — панель Мега Редлайт 1200 Вт"],
   ["776205184672v2", "LED-щётка ICETRIBE с двумя сменными насадками"],
 ]);
 
@@ -45,7 +43,7 @@ test("publishes only approved offers with agreed names and source commerce field
   const offers = offersFrom(output);
 
   assert.match(output, /<yml_catalog date="2026-07-17 13:15">/);
-  assert.equal(offers.length, 15);
+  assert.equal(offers.length, 13);
   assert.deepEqual(new Set(offers.map((offer) => offer.id)), new Set(expectedTitles.keys()));
 
   for (const [id, title] of expectedTitles) {
@@ -60,4 +58,17 @@ test("publishes only approved offers with agreed names and source commerce field
 test("rejects a source feed that lacks an approved offer", () => {
   const incomplete = sourceFeed().replace(/<offer id="776205184672v2"[\s\S]*?<\/offer>/, "");
   assert.throws(() => buildFeed(incomplete, new Date("2026-07-17T10:15:30.000Z")), /776205184672v2/);
+});
+
+test("catalog-pages feed contains collections and links every approved offer to one", () => {
+  const output = buildCatalogPagesFeed(sourceFeed(), new Date("2026-07-17T10:15:30.000Z"));
+  const collectionIds = [...output.matchAll(/<collection id="([^"]+)">/g)].map((match) => match[1]);
+  const linkedOffers = [...output.matchAll(/<offer\s+[^>]*id="([^"]+)"[^>]*>[\s\S]*?<collectionId>([^<]+)<\/collectionId>[\s\S]*?<\/offer>/g)]
+    .map((match) => ({ offerId: match[1], collectionId: match[2] }));
+
+  assert.deepEqual(new Set(collectionIds), new Set(COLLECTION_RULES.map(({ id }) => id)));
+  assert.equal(linkedOffers.length, 13);
+  assert.deepEqual(new Set(linkedOffers.map(({ offerId }) => offerId)), new Set(expectedTitles.keys()));
+  assert.ok(linkedOffers.every(({ collectionId }) => collectionIds.includes(collectionId)));
+  assert.match(output, /<url>https:\/\/icetribe\.ru\/katalog#rec768081152<\/url>/);
 });
