@@ -60,6 +60,33 @@ test("rejects a source feed that lacks an approved offer", () => {
   assert.throws(() => buildFeed(incomplete, new Date("2026-07-17T10:15:30.000Z")), /776205184672v2/);
 });
 
+test("removes an invalid old price that is not above the current price", () => {
+  const source = sourceFeed().replace(
+    "<price>1009</price>",
+    "<price>1009</price><oldprice>999</oldprice>",
+  );
+  const output = buildFeed(source, new Date("2026-07-17T10:15:30.000Z"));
+  const offer = output.match(/<offer id="134090264742"[\s\S]*?<\/offer>/)?.[0] || "";
+
+  assert.match(offer, /<price>1009<\/price>/);
+  assert.doesNotMatch(offer, /<oldprice>/);
+});
+
+test("corrects contradictory sauna height copy for each size", () => {
+  const source = sourceFeed().replaceAll(
+    "</name>",
+    "</name><description><![CDATA[Подходит для роста от 210 см и веса до 140 кг.]]></description>",
+  );
+  const output = buildFeed(source, new Date("2026-07-17T10:15:30.000Z"));
+
+  assert.match(output, /Размер M рассчитан на рост до 180 см; максимальный вес — 140 кг\./);
+  assert.match(output, /Размер XL рассчитан на рост до 205 см; максимальный вес — 140 кг\./);
+  for (const id of ["814872761312", "298280027412", "677485475162", "598776759652"]) {
+    const offer = output.match(new RegExp(`<offer id="${id}"[\\s\\S]*?<\\/offer>`))?.[0] || "";
+    assert.doesNotMatch(offer, /Подходит для роста от 210 см/);
+  }
+});
+
 test("catalog-pages feed contains collections and links every approved offer to one", () => {
   const output = buildCatalogPagesFeed(sourceFeed(), new Date("2026-07-17T10:15:30.000Z"));
   const collectionIds = [...output.matchAll(/<collection id="([^"]+)">/g)].map((match) => match[1]);

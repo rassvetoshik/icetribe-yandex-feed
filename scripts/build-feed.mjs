@@ -27,6 +27,13 @@ export const UNAVAILABLE_SOURCE_OFFERS = [
   "288118574782", // Mega Redlight 1200 W
 ];
 
+const SAUNA_SIZE_COPY = new Map([
+  ["814872761312", "Размер M рассчитан на рост до 180 см; максимальный вес — 140 кг."],
+  ["298280027412", "Размер XL рассчитан на рост до 205 см; максимальный вес — 140 кг."],
+  ["677485475162", "Размер XL рассчитан на рост до 205 см; максимальный вес — 140 кг."],
+  ["598776759652", "Размер M рассчитан на рост до 180 см; максимальный вес — 140 кг."],
+]);
+
 export const COLLECTION_RULES = [
   {
     id: "cold-plunge-baths",
@@ -84,6 +91,26 @@ const tagValue = (body, tag) => body
   ?.replace(/<!\[CDATA\[|\]\]>/g, "")
   .trim() || "";
 
+const sanitizeCommerceFields = (body) => {
+  const price = Number.parseFloat(tagValue(body, "price"));
+  const oldPrice = Number.parseFloat(tagValue(body, "oldprice"));
+  if (Number.isFinite(price) && Number.isFinite(oldPrice) && oldPrice <= price) {
+    return body.replace(/\s*<oldprice\b[^>]*>[\s\S]*?<\/oldprice>/i, "");
+  }
+  return body;
+};
+
+const correctSaunaSizeCopy = (body, id) => {
+  const replacement = SAUNA_SIZE_COPY.get(id);
+  if (!replacement) {
+    return body;
+  }
+  return body.replace(
+    /Подходит для роста от 210 см и веса до 140 кг\./g,
+    replacement,
+  );
+};
+
 const formatMoscowDate = (now) => {
   const values = Object.fromEntries(new Intl.DateTimeFormat("en-GB", {
     timeZone: "Europe/Moscow",
@@ -126,7 +153,9 @@ export function buildFeed(sourceXml, now = new Date()) {
       throw new Error(`Offer ${id} has no <name> element`);
     }
 
-    const body = offer.body.replace(/<name\b[^>]*>[\s\S]*?<\/name>/i, `<name>${escapeXml(title)}</name>`);
+    let body = offer.body.replace(/<name\b[^>]*>[\s\S]*?<\/name>/i, `<name>${escapeXml(title)}</name>`);
+    body = correctSaunaSizeCopy(body, id);
+    body = sanitizeCommerceFields(body);
     return { ...offer, body, categoryId: tagValue(offer.body, "categoryId") };
   });
 
