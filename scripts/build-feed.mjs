@@ -27,6 +27,12 @@ export const UNAVAILABLE_SOURCE_OFFERS = [
   "288118574782", // Mega Redlight 1200 W
 ];
 
+// Tilda can keep a positive feed count while the storefront is already on preorder.
+// Keep these products out of advertising until the live storefront allows purchase again.
+export const MANUALLY_BLOCKED_OFFER_IDS = new Set([
+  "821685486332", // Super Redlight: storefront shows preorder on 2026-08-21, source feed says count=10.
+]);
+
 const SAUNA_SIZE_COPY = new Map([
   ["814872761312", "Размер M рассчитан на рост до 180 см; максимальный вес — 140 кг."],
   ["298280027412", "Размер XL рассчитан на рост до 205 см; максимальный вес — 140 кг."],
@@ -153,7 +159,7 @@ export function buildFeed(sourceXml, now = new Date()) {
   const offersById = new Map(sourceOffers.map((offer) => [offer.id, offer]));
   const selectedOffers = OFFER_RULES.filter(({ id }) => {
     const offer = offersById.get(id);
-    return offer && isOfferInStock(offer);
+    return offer && !MANUALLY_BLOCKED_OFFER_IDS.has(id) && isOfferInStock(offer);
   }).map(({ id, title }) => {
     const offer = offersById.get(id);
     if (!/<name\b[^>]*>[\s\S]*?<\/name>/i.test(offer.body)) {

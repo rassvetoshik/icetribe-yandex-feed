@@ -1,7 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { COLLECTION_RULES, buildCatalogPagesFeed, buildFeed } from "../scripts/build-feed.mjs";
+import {
+  COLLECTION_RULES,
+  MANUALLY_BLOCKED_OFFER_IDS,
+  buildCatalogPagesFeed,
+  buildFeed,
+} from "../scripts/build-feed.mjs";
 
 const expectedTitles = new Map([
   ["814872761312", "Инфракрасная сауна с ПЭМП для энергии, похудения и хорошего сна — фиолетовая, M (рост до 180 см)"],
@@ -41,12 +46,16 @@ test("publishes only approved offers with agreed names and source commerce field
   const sourceOffersById = new Map(offersFrom(source).map((offer) => [offer.id, offer]));
   const output = buildFeed(source, new Date("2026-07-17T10:15:30.000Z"));
   const offers = offersFrom(output);
+  const expectedPublishedIds = new Set(
+    [...expectedTitles.keys()].filter((id) => !MANUALLY_BLOCKED_OFFER_IDS.has(id)),
+  );
 
   assert.match(output, /<yml_catalog date="2026-07-17 13:15">/);
-  assert.equal(offers.length, 13);
-  assert.deepEqual(new Set(offers.map((offer) => offer.id)), new Set(expectedTitles.keys()));
+  assert.equal(offers.length, expectedPublishedIds.size);
+  assert.deepEqual(new Set(offers.map((offer) => offer.id)), expectedPublishedIds);
 
   for (const [id, title] of expectedTitles) {
+    if (MANUALLY_BLOCKED_OFFER_IDS.has(id)) continue;
     const offer = offers.find((item) => item.id === id);
     assert.equal(offer.name, title);
     assert.equal(offer.url, `https://example.test/${id}`);
@@ -60,7 +69,7 @@ test("skips an approved offer that disappeared from the source feed", () => {
   const output = buildFeed(incomplete, new Date("2026-07-17T10:15:30.000Z"));
   const offers = offersFrom(output);
 
-  assert.equal(offers.length, 12);
+  assert.equal(offers.length, expectedTitles.size - MANUALLY_BLOCKED_OFFER_IDS.size - 1);
   assert.ok(!offers.some(({ id }) => id === "776205184672v2"));
 });
 
@@ -115,9 +124,16 @@ test("catalog-pages feed contains collections and links every approved offer to 
   const linkedOffers = [...output.matchAll(/<offer\s+[^>]*id="([^"]+)"[^>]*>[\s\S]*?<collectionId>([^<]+)<\/collectionId>[\s\S]*?<\/offer>/g)]
     .map((match) => ({ offerId: match[1], collectionId: match[2] }));
 
-  assert.deepEqual(new Set(collectionIds), new Set(COLLECTION_RULES.map(({ id }) => id)));
-  assert.equal(linkedOffers.length, 13);
-  assert.deepEqual(new Set(linkedOffers.map(({ offerId }) => offerId)), new Set(expectedTitles.keys()));
+  const expectedCollectionIds = new Set(COLLECTION_RULES
+    .filter(({ offerIds }) => offerIds.some((id) => !MANUALLY_BLOCKED_OFFER_IDS.has(id)))
+    .map(({ id }) => id));
+  const expectedOfferIds = new Set(
+    [...expectedTitles.keys()].filter((id) => !MANUALLY_BLOCKED_OFFER_IDS.has(id)),
+  );
+
+  assert.deepEqual(new Set(collectionIds), expectedCollectionIds);
+  assert.equal(linkedOffers.length, expectedOfferIds.size);
+  assert.deepEqual(new Set(linkedOffers.map(({ offerId }) => offerId)), expectedOfferIds);
   assert.ok(linkedOffers.every(({ collectionId }) => collectionIds.includes(collectionId)));
   assert.match(output, /<url>https:\/\/icetribe\.ru\/katalog#rec768081152<\/url>/);
 });
@@ -130,7 +146,10 @@ test("catalog-pages feed links only currently available approved offers", () => 
   const output = buildCatalogPagesFeed(source, new Date("2026-07-17T10:15:30.000Z"));
 
   assert.doesNotMatch(output, /<offer id="186761541822"/);
-  assert.equal((output.match(/<collectionId>/g) || []).length, 12);
+  assert.equal(
+    (output.match(/<collectionId>/g) || []).length,
+    expectedTitles.size - MANUALLY_BLOCKED_OFFER_IDS.size - 1,
+  );
 });
 
 test("catalog-pages feed omits collections with no available offers", () => {
