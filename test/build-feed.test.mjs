@@ -15,6 +15,7 @@ const expectedTitles = new Map([
   ["598776759652", "Инфракрасная сауна с ПЭМП для энергии, похудения и хорошего сна — аквамарин, M (рост до 180 см)"],
   ["803084408192", "Ванна для закаливания ICE TRIBE «Айс Купель»"],
   ["654492486722", "Ванна для закаливания ICE TRIBE «Айс Ванна Про 150 см»"],
+  ["454054094252", "Ванна для закаливания ICE TRIBE «Айс Титан 155 см»"],
   ["402271374662", "Ванна для закаливания ICE TRIBE «Тундра Про»"],
   ["979005474422v1", "Инфракрасная кепка для роста волос"],
   ["186761541822", "Энерджи ПЭМП-мат для восстановления и снижения стресса"],
@@ -86,20 +87,23 @@ test("excludes approved offers with zero stock or available=false", () => {
   const output = buildFeed(source, new Date("2026-07-17T10:15:30.000Z"));
   const ids = new Set(offersFrom(output).map(({ id }) => id));
 
-  assert.equal(ids.size, 11);
+  assert.equal(ids.size, expectedTitles.size - MANUALLY_BLOCKED_OFFER_IDS.size - 1);
   assert.ok(!ids.has("186761541822"));
   assert.ok(!ids.has("821685486332"));
 });
 
 test("removes an invalid old price that is not above the current price", () => {
+  const officeSourcePrice = offersFrom(sourceFeed())
+    .find(({ id }) => id === "134090264742")
+    .price;
   const source = sourceFeed().replace(
-    "<price>1009</price>",
-    "<price>1009</price><oldprice>999</oldprice>",
+    `<price>${officeSourcePrice}</price>`,
+    `<price>${officeSourcePrice}</price><oldprice>999</oldprice>`,
   );
   const output = buildFeed(source, new Date("2026-07-17T10:15:30.000Z"));
   const offer = output.match(/<offer id="134090264742"[\s\S]*?<\/offer>/)?.[0] || "";
 
-  assert.match(offer, /<price>1009<\/price>/);
+  assert.match(offer, new RegExp(`<price>${officeSourcePrice}<\\/price>`));
   assert.doesNotMatch(offer, /<oldprice>/);
 });
 
