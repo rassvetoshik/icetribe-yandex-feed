@@ -91,6 +91,16 @@ const tagValue = (body, tag) => body
   ?.replace(/<!\[CDATA\[|\]\]>/g, "")
   .trim() || "";
 
+const isOfferInStock = ({ attributes, body }) => {
+  const available = attributes.match(/\bavailable=(['"])(.*?)\1/i)?.[2]?.toLowerCase();
+  if (available === "false") {
+    return false;
+  }
+
+  const count = Number.parseFloat(tagValue(body, "count"));
+  return !Number.isFinite(count) || count > 0;
+};
+
 const sanitizeCommerceFields = (body) => {
   const price = Number.parseFloat(tagValue(body, "price"));
   const oldPrice = Number.parseFloat(tagValue(body, "oldprice"));
@@ -141,13 +151,10 @@ export function buildFeed(sourceXml, now = new Date()) {
     id: match[2].match(/\bid=(['"])(.*?)\1/i)?.[2] || "",
   }));
   const offersById = new Map(sourceOffers.map((offer) => [offer.id, offer]));
-  const missingIds = OFFER_RULES.filter(({ id }) => !offersById.has(id)).map(({ id }) => id);
-
-  if (missingIds.length) {
-    throw new Error(`Source feed is missing approved offer IDs: ${missingIds.join(", ")}`);
-  }
-
-  const selectedOffers = OFFER_RULES.map(({ id, title }) => {
+  const selectedOffers = OFFER_RULES.filter(({ id }) => {
+    const offer = offersById.get(id);
+    return offer && isOfferInStock(offer);
+  }).map(({ id, title }) => {
     const offer = offersById.get(id);
     if (!/<name\b[^>]*>[\s\S]*?<\/name>/i.test(offer.body)) {
       throw new Error(`Offer ${id} has no <name> element`);
@@ -158,6 +165,10 @@ export function buildFeed(sourceXml, now = new Date()) {
     body = sanitizeCommerceFields(body);
     return { ...offer, body, categoryId: tagValue(offer.body, "categoryId") };
   });
+
+  if (!selectedOffers.length) {
+    throw new Error("Source feed has no approved offers in stock");
+  }
 
   const usedCategoryIds = new Set(selectedOffers.map(({ categoryId }) => categoryId).filter(Boolean));
   const categoriesMatch = sourceXml.match(/<categories>([\s\S]*?)<\/categories>/i);

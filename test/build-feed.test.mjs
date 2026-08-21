@@ -55,9 +55,31 @@ test("publishes only approved offers with agreed names and source commerce field
   }
 });
 
-test("rejects a source feed that lacks an approved offer", () => {
+test("skips an approved offer that disappeared from the source feed", () => {
   const incomplete = sourceFeed().replace(/<offer id="776205184672v2"[\s\S]*?<\/offer>/, "");
-  assert.throws(() => buildFeed(incomplete, new Date("2026-07-17T10:15:30.000Z")), /776205184672v2/);
+  const output = buildFeed(incomplete, new Date("2026-07-17T10:15:30.000Z"));
+  const offers = offersFrom(output);
+
+  assert.equal(offers.length, 12);
+  assert.ok(!offers.some(({ id }) => id === "776205184672v2"));
+});
+
+test("excludes approved offers with zero stock or available=false", () => {
+  const source = sourceFeed()
+    .replace(
+      '<offer id="186761541822" available="true">',
+      '<offer id="186761541822" available="true"><count>0</count>',
+    )
+    .replace(
+      '<offer id="821685486332" available="true">',
+      '<offer id="821685486332" available="false"><count>23</count>',
+    );
+  const output = buildFeed(source, new Date("2026-07-17T10:15:30.000Z"));
+  const ids = new Set(offersFrom(output).map(({ id }) => id));
+
+  assert.equal(ids.size, 11);
+  assert.ok(!ids.has("186761541822"));
+  assert.ok(!ids.has("821685486332"));
 });
 
 test("removes an invalid old price that is not above the current price", () => {
@@ -98,4 +120,15 @@ test("catalog-pages feed contains collections and links every approved offer to 
   assert.deepEqual(new Set(linkedOffers.map(({ offerId }) => offerId)), new Set(expectedTitles.keys()));
   assert.ok(linkedOffers.every(({ collectionId }) => collectionIds.includes(collectionId)));
   assert.match(output, /<url>https:\/\/icetribe\.ru\/katalog#rec768081152<\/url>/);
+});
+
+test("catalog-pages feed links only currently available approved offers", () => {
+  const source = sourceFeed().replace(
+    '<offer id="186761541822" available="true">',
+    '<offer id="186761541822" available="true"><count>0</count>',
+  );
+  const output = buildCatalogPagesFeed(source, new Date("2026-07-17T10:15:30.000Z"));
+
+  assert.doesNotMatch(output, /<offer id="186761541822"/);
+  assert.equal((output.match(/<collectionId>/g) || []).length, 12);
 });
