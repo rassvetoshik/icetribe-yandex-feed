@@ -132,3 +132,15 @@ test("catalog-pages feed links only currently available approved offers", () => 
   assert.doesNotMatch(output, /<offer id="186761541822"/);
   assert.equal((output.match(/<collectionId>/g) || []).length, 12);
 });
+
+test("catalog-pages feed omits collections with no available offers", () => {
+  const source = sourceFeed().replace(
+    '<offer id="821685486332" available="true">',
+    '<offer id="821685486332" available="false"><count>0</count>',
+  );
+  const output = buildCatalogPagesFeed(source, new Date("2026-07-17T10:15:30.000Z"));
+
+  assert.doesNotMatch(output, /<collection id="red-light-panels">/);
+  assert.doesNotMatch(output, /<offer id="821685486332"/);
+  assert.equal((output.match(/<collection id=/g) || []).length, COLLECTION_RULES.length - 1);
+});

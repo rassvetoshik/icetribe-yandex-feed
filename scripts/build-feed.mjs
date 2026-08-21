@@ -192,7 +192,9 @@ const collectionsByOfferId = new Map(
   COLLECTION_RULES.flatMap(({ id, offerIds }) => offerIds.map((offerId) => [offerId, id])),
 );
 
-const renderCollections = () => `<collections>${COLLECTION_RULES.map((collection) => `
+const renderCollections = (availableOfferIds) => `<collections>${COLLECTION_RULES
+  .filter(({ offerIds }) => offerIds.some((offerId) => availableOfferIds.has(offerId)))
+  .map((collection) => `
   <collection id="${collection.id}">
     <url>${escapeXml(collection.url)}</url>
     <name>${escapeXml(collection.name)}</name>
@@ -224,7 +226,12 @@ export function buildCatalogPagesFeed(sourceXml, now = new Date()) {
   });
 
   output = output.replace(/\s*<collections>[\s\S]*?<\/collections>/i, "");
-  return output.replace(/<\/offers>/i, `</offers>\n${renderCollections()}`);
+  const availableOfferIds = new Set(
+    [...output.matchAll(/<offer\s+([^>]*)>/gi)]
+      .map((match) => match[1].match(/\bid=(['"])(.*?)\1/i)?.[2])
+      .filter(Boolean),
+  );
+  return output.replace(/<\/offers>/i, `</offers>\n${renderCollections(availableOfferIds)}`);
 }
 
 async function main() {
