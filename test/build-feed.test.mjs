@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   COLLECTION_RULES,
   MANUALLY_BLOCKED_OFFER_IDS,
+  OFFER_URL_OVERRIDES,
   buildCatalogPagesFeed,
   buildFeed,
 } from "../scripts/build-feed.mjs";
@@ -59,10 +60,18 @@ test("publishes only approved offers with agreed names and source commerce field
     if (MANUALLY_BLOCKED_OFFER_IDS.has(id)) continue;
     const offer = offers.find((item) => item.id === id);
     assert.equal(offer.name, title);
-    assert.equal(offer.url, `https://example.test/${id}`);
+    assert.equal(offer.url, OFFER_URL_OVERRIDES.get(id) || `https://example.test/${id}`);
     assert.equal(offer.picture, `https://example.test/${id}.jpg`);
     assert.equal(offer.price, sourceOffersById.get(id).price);
   }
+});
+
+test("replaces the obsolete Tilda URL for the PEMF belt", () => {
+  const output = buildFeed(sourceFeed(), new Date("2026-07-17T10:15:30.000Z"));
+  const belt = offersFrom(output).find(({ id }) => id === "961362605513");
+
+  assert.equal(belt.url, "https://icetribe.ru/pemfbelt");
+  assert.doesNotMatch(output, /961362605513-vernii-poyas-s-tehnologiei-pemp/);
 });
 
 test("skips an approved offer that disappeared from the source feed", () => {

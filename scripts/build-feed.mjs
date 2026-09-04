@@ -3,6 +3,13 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 export const SOURCE_FEED_URL = "https://icetribe.ru/tstore/yml/6aaa63d2ffe6f090367e6716269e1ab6.yml";
+export const SOURCE_FALLBACK_URL = "https://rassvetoshik.github.io/icetribe-yandex-feed/yandex-direct.yml";
+
+// The site was migrated from Tilda to Next.js. Keep explicit product-card
+// redirects here so a cached source feed cannot publish obsolete Tilda URLs.
+export const OFFER_URL_OVERRIDES = new Map([
+  ["961362605513", "https://icetribe.ru/pemfbelt"],
+]);
 
 export const OFFER_RULES = [
   ["814872761312", "Инфракрасная сауна с ПЭМП для энергии, похудения и хорошего сна — фиолетовая, M (рост до 180 см)"],
@@ -128,6 +135,17 @@ const correctSaunaSizeCopy = (body, id) => {
   );
 };
 
+const correctOfferUrl = (body, id) => {
+  const replacement = OFFER_URL_OVERRIDES.get(id);
+  if (!replacement) {
+    return body;
+  }
+  const urlTag = `<url>${escapeXml(replacement)}</url>`;
+  return /<url\b[^>]*>[\s\S]*?<\/url>/i.test(body)
+    ? body.replace(/<url\b[^>]*>[\s\S]*?<\/url>/i, urlTag)
+    : `${body}${urlTag}`;
+};
+
 const formatMoscowDate = (now) => {
   const values = Object.fromEntries(new Intl.DateTimeFormat("en-GB", {
     timeZone: "Europe/Moscow",
@@ -170,6 +188,7 @@ export function buildFeed(sourceXml, now = new Date()) {
     let body = offer.body.replace(/<name\b[^>]*>[\s\S]*?<\/name>/i, `<name>${escapeXml(title)}</name>`);
     body = correctSaunaSizeCopy(body, id);
     body = sanitizeCommerceFields(body);
+    body = correctOfferUrl(body, id);
     return { ...offer, body, categoryId: tagValue(offer.body, "categoryId") };
   });
 
@@ -242,14 +261,28 @@ export function buildCatalogPagesFeed(sourceXml, now = new Date()) {
 }
 
 async function main() {
-  const response = await fetch(SOURCE_FEED_URL, {
-    headers: { "User-Agent": "ICE-TRIBE-Yandex-Feed/1.0" },
-  });
-  if (!response.ok) {
-    throw new Error(`Source feed HTTP ${response.status}`);
+  let sourceXml;
+  try {
+    const response = await fetch(SOURCE_FEED_URL, {
+      headers: { "User-Agent": "ICE-TRIBE-Yandex-Feed/1.0" },
+    });
+    if (!response.ok) {
+      throw new Error(`Source feed HTTP ${response.status}`);
+    }
+    sourceXml = await response.text();
+  } catch (error) {
+    // The old Tilda feed disappeared after the site migration. Falling back to
+    // the last successfully published feed keeps Direct's URLs valid while the
+    // new site-side inventory export is being introduced.
+    const fallback = await fetch(SOURCE_FALLBACK_URL, {
+      headers: { "User-Agent": "ICE-TRIBE-Yandex-Feed/1.0" },
+    });
+    if (!fallback.ok) {
+      throw new Error(`Primary source unavailable (${error.message}); fallback HTTP ${fallback.status}`);
+    }
+    sourceXml = await fallback.text();
+    console.warn(`Source feed unavailable (${error.message}); using ${SOURCE_FALLBACK_URL}`);
   }
-
-  const sourceXml = await response.text();
   const output = buildFeed(sourceXml);
   const catalogPagesOutput = buildCatalogPagesFeed(sourceXml);
   const outputDirectory = path.resolve("docs");
